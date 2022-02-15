@@ -1,0 +1,23 @@
+version: '3'
+services:
+  elram:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: elram
+    volumes:
+      - .:/usr/src/app
+    env_file:
+      - auth.env
+    links:
+      - database
+  database:
+    image: 'postgres:latest'
+    ports:
+      - 5432:5432
+    expose:
+      - "5432"
+    environment:
+      POSTGRES_USER: elram
+      POSTGRES_PASSWORD: elram
+      POSTGRES_DB: elram
