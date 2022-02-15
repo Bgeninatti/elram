@@ -1,4 +1,5 @@
 import setuptools
+from elram import __version__
 
 with open("README.md", "r") as fh:
     long_description = fh.read()
@@ -8,7 +9,7 @@ with open("requirements.build.txt", "r") as rf:
 
 setuptools.setup(
     name="elram",
-    version="0.1.0",
+    version=__version__,
     author="Bruno Geninatti",
     author_email="brunogeninatti@gmail.com",
     description="Un bot de telegram para ayudar con la gestión de la peña.",
