@@ -30,4 +30,4 @@ build:
 stop:
 	$(COMPOSE) down
 
-.PHONY: help play test devshell
+.PHONY: help run shell test check-imports check-style build stop

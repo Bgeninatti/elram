@@ -9,6 +9,7 @@ def clean_setting(key):
 def load_config():
     params = urlparse(os.environ["DATABASE_URL"])
     config = {
+        "PASSWORD": clean_setting("PASSWORD"),
         "BOT_TOKEN": clean_setting("BOT_TOKEN"),
         "DB": {
             "db_name": params.path[1:],
