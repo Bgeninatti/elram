@@ -17,7 +17,6 @@ def setup_logger(lvl="info"):
 
     LOGGING_CONFIG = {
         "version": 1,
-        "disable_existing_loggers": True,
         "formatters": {
             "standard": {
                 "format": "%(asctime)s [%(levelname)s] %(module)s:%(funcName)s %(message)s"
@@ -28,14 +27,12 @@ def setup_logger(lvl="info"):
                 "level": lvl.upper(),
                 "formatter": "standard",
                 "class": "logging.StreamHandler",
-                "stream": "ext://sys.stdout",
             },
         },
         "loggers": {
-            "game": {
+            "main": {
                 "handlers": ["default"],
                 "level": lvl.upper(),
-                "propagate": False,
             },
         },
     }

@@ -27,4 +27,7 @@ check-style:
 build:
 	$(COMPOSE) build
 
+stop:
+	$(COMPOSE) down
+
 .PHONY: help play test devshell
