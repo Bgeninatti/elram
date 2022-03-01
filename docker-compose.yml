@@ -9,6 +9,7 @@ services:
       - .:/usr/src/app
     env_file:
       - auth.env
+      - configuration.env
     links:
       - database
   database:
