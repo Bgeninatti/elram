@@ -29,7 +29,7 @@ class NewEventConversation:
         context.user_data['event'] = event
 
         message.reply_text(
-            f'La próxima peña es el la {event.datetime_display}.\n'
+            f'La próxima peña es la del {event.datetime_display}.\n'
             'La hacemos ese día?',
             reply_markup=self.main_menu
 
@@ -88,7 +88,7 @@ class NewEventConversation:
     def save_host(self, update: Update, context: CallbackContext):
         message = update.callback_query.message if update.message is None else update.message
         event = context.user_data['event']
-        host, _ = User.get_or_create(nickname=message.text.title())
+        host, _ = User.get_or_create(nickname=message.text)
         event.add_attendee(host, is_host=True)
 
         message.reply_text(

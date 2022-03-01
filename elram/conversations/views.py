@@ -32,16 +32,6 @@ def ask_user(message, exclude: Optional[List[User]] = None, optional: bool = Fal
     )
 
 
-def show_event(message, event):
-    attendees_names = '\n - '.join([a.nickname for a in event.attendees])
-    msg = (
-        f'Peña #{event.id} - {event.datetime_display}\n'
-        f'Organiza {event.host.nickname}\n\n'
-        f'Asistentes:\n{attendees_names}'
-    )
-    message.reply_text(msg)
-
-
 def show_main_menu(message):
     event = Event.get_active()
     if event is None:
@@ -54,7 +44,7 @@ def show_main_menu(message):
         message.reply_text(
             'La próxima peña es esta.'
         )
-        show_event(message, event)
+        message.reply_text(str(event))
         buttons = [[InlineKeyboardButton(text='Cerrar peña actual', callback_data=CLOSE_EVENT)]]
 
     buttons += [

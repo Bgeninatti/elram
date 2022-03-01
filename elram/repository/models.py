@@ -29,9 +29,6 @@ class User(BaseModel):
     is_staff: bool = BooleanField(default=False)
 
 
-AttendanceThroughDeferred = DeferredThroughModel()
-
-
 class Event(BaseModel):
     SPANISH_WEEKDAYS = {
         0: 'Lunes',
@@ -59,7 +56,6 @@ class Event(BaseModel):
 
     datetime: datetime = DateTimeField()
     is_active: bool = BooleanField(default=True)
-    attendees = ManyToManyField(User, backref='events', through_model=AttendanceThroughDeferred)
 
     @classmethod
     def get_next_event(cls):
@@ -72,7 +68,7 @@ class Event(BaseModel):
 
     @classmethod
     def get_active(cls):
-        return Event.select().where(Event.is_active == True).first()
+        return cls.select().where(Event.is_active == True).first()
 
     @classmethod
     def get_last_event(cls):
@@ -86,11 +82,10 @@ class Event(BaseModel):
 
     @property
     def host(self):
-        return self.attendees.where(Attendance.is_host == True).first()
+        return self.attendees.where(Attendance.is_host == True).first().attendee
 
     def add_attendee(self, attendee: User, is_host: bool = False):
-        att = Attendance.create(event_id=self.id, attendee=attendee, is_host=is_host)
-        self.attendees.add(att)
+        Attendance.create(event_id=self.id, attendee=attendee, is_host=is_host)
 
     def close(self):
         if not self.is_active:
@@ -98,10 +93,18 @@ class Event(BaseModel):
         self.is_active = False
         self.save()
 
+    def __str__(self):
+        attendees_names = '\n'.join([a.attendee.nickname for a in self.attendees])
+        return (
+            f'Peña #{self.id} el {self.datetime_display}.\n'
+            f'La organiza {self.host.nickname} y hasta ahora van:\n'
+            f'{attendees_names}'
+        )
+
 
 class Attendance(BaseModel):
     attendee = ForeignKeyField(User, related_name='attendances')
-    event = ForeignKeyField(Event)
+    event = ForeignKeyField(Event, related_name='attendees')
     is_host = BooleanField(default=False)
     debit = DecimalField(default=0)
     credit = DecimalField(default=0)
@@ -114,9 +117,6 @@ class Attendance(BaseModel):
         :return: int
         """
         return self.debit - self.credit
-
-
-AttendanceThroughDeferred.set_model(Attendance)
 
 
 def init_db(db_name, user, password, host, port):
