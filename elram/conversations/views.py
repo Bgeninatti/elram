@@ -7,13 +7,21 @@ from elram.conversations.states import MAIN_MENU, NEW_EVENT, CLOSE_EVENT, LIST_E
 from elram.repository.models import User, Event
 
 
-def ask_user(message, exclude: Optional[List[User]] = None, optional: bool = False):
+def ask_user(
+    message,
+    exclude: Optional[List[User]] = None,
+    optional: bool = False,
+    hosts_only: bool = False,
+    allow_create: bool = False,
+):
+    users = User.select()
+
+    if hosts_only:
+        users = users.where(User.is_host)
 
     if exclude is not None:
         excluded_ids = [u.id for u in exclude]
-        users = User.select(User.not_in(excluded_ids))
-    else:
-        users = User.select()
+        users = users.where(User.not_in(excluded_ids))
 
     buttons = [
         [KeyboardButton(text=u.nickname)]
@@ -26,25 +34,31 @@ def ask_user(message, exclude: Optional[List[User]] = None, optional: bool = Fal
         keyboard=buttons,
         one_time_keyboard=True,
     )
-    message.reply_text(
-        'Si el nombre no aparece en la lista escribilo y yo lo agrego.',
-        reply_markup=keyboard
-    )
+
+    if allow_create:
+        msg = 'Si el nombre no aparece en la lista escribilo y yo lo agrego.'
+    else:
+        msg = 'Elegí un nombre de la lista.'
+
+    message.reply_text(msg, reply_markup=keyboard)
 
 
 def show_main_menu(message):
     event = Event.get_active()
     if event is None:
+        event = Event.get_next_event()
         message.reply_text(
-            'Ahora no hay ninguna peña activa. Están todos re tirados.'
+            'Ahora no hay ninguna peña activa.'
         )
-        buttons = [[InlineKeyboardButton(text='Crear una peña', callback_data=NEW_EVENT)]]
+        message.reply_text(
+            f'La próxima sería la {event}'
+        )
 
+        buttons = [[InlineKeyboardButton(text='Activar próxima peña', callback_data=NEW_EVENT)]]
     else:
         message.reply_text(
-            'La próxima peña es esta.'
+            f'La próxima peña es la {event}'
         )
-        message.reply_text(str(event))
         buttons = [[InlineKeyboardButton(text='Cerrar peña actual', callback_data=CLOSE_EVENT)]]
 
     buttons += [

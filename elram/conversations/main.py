@@ -69,7 +69,7 @@ class MainConversation:
         active_event = Event.get_active()
         active_event.close()
 
-        message.reply_text(f'Listo. Cerré la peña #{active_event.id}')
+        message.reply_text(f'Listo. Cerré la peña #{active_event.code}')
         return show_main_menu(message)
 
     def get_handler(self):

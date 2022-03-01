@@ -135,22 +135,38 @@ class Event(BaseModel):
     def host(self):
         return self.attendees.where(Attendance.is_host == True).first().attendee
 
+    def replace_host(self, host):
+        Attendance.delete().where((Attendance.event == self) & Attendance.is_host).execute()
+        self.add_attendee(attendee=host, is_host=True)
+
     def add_attendee(self, attendee: User, is_host: bool = False):
         Attendance.create(event_id=self.id, attendee=attendee, is_host=is_host)
 
-    def close(self):
-        if not self.status == self.CLOSED:
+    def _set_status(self, status):
+        if self.status == status:
             return
-        self.status = self.CLOSED
+        self.status = status
         self.save()
 
+    def close(self):
+        self._set_status(self.CLOSED)
+
+    def activate(self):
+        self._set_status(self.ACTIVE)
+
     def __str__(self):
-        attendees_names = '\n'.join([a.attendee.nickname for a in self.attendees])
-        return (
-            f'Peña #{self.id} el {self.datetime_display}.\n'
-            f'La organiza {self.host.nickname} y hasta ahora van:\n'
-            f'{attendees_names}'
+        msg = (
+            f'Peña #{self.code} el {self.datetime_display}.\n'
+            f'La organiza {self.host.nickname}'
         )
+        if self.status == self.ACTIVE:
+            attendees = list(self.attendees)
+            if len(attendees) == 1:
+                msg += ' y hasta ahora va él solo. Flojo.'
+            else:
+                attendees_names = '\n'.join([f'{i+1}. {a.attendee.nickname}' for i, a in enumerate(attendees)])
+                msg += f' y hasta ahora van:\n{attendees_names}'
+        return msg
 
 
 class Attendance(BaseModel):

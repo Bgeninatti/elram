@@ -7,7 +7,7 @@ from elram.repository.models import User, Event
 
 class CurrentEventConversation:
 
-    ASK_ATTENDEES, MAIN_MENU = range(10, 12)
+    ASK_ATTENDEES, MAIN_MENU = range(13, 15)
 
     def ask_atteendees(self, update: Update, context: CallbackContext):
         # Build initial message
