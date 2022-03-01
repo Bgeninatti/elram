@@ -119,7 +119,7 @@ class Event(BaseModel):
 
     @classmethod
     def get_active(cls):
-        return cls.select().where(cls.status == cls.ACTIVE).first()
+        return cls.select().join(Attendance).where(cls.status == cls.ACTIVE).first()
 
     @classmethod
     def get_last_event(cls):
@@ -154,18 +154,26 @@ class Event(BaseModel):
     def activate(self):
         self._set_status(self.ACTIVE)
 
+    def get_attendees(self):
+        return [
+            a.attendee for a in self.attendees
+        ]
+
+    def display_attendees(self):
+        attendees = list(self.attendees)
+        if len(attendees) == 1:
+            return f'Hasta ahora va {attendees[0].attendee.nickname} solo. Flojo.'
+        else:
+            attendees_names = '\n'.join([f'{i + 1}. {a.attendee.nickname}' for i, a in enumerate(attendees)])
+            return f'Hasta ahora van:\n{attendees_names}'
+
     def __str__(self):
         msg = (
             f'Peña #{self.code} el {self.datetime_display}.\n'
-            f'La organiza {self.host.nickname}'
+            f'La organiza {self.host.nickname}. \n'
         )
         if self.status == self.ACTIVE:
-            attendees = list(self.attendees)
-            if len(attendees) == 1:
-                msg += ' y hasta ahora va él solo. Flojo.'
-            else:
-                attendees_names = '\n'.join([f'{i+1}. {a.attendee.nickname}' for i, a in enumerate(attendees)])
-                msg += f' y hasta ahora van:\n{attendees_names}'
+            msg += self.display_attendees()
         return msg
 
 

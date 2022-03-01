@@ -102,15 +102,13 @@ class NewEventConversation:
         message.reply_text(
             'Quien organiza la peña?',
         )
-        ask_user(message, optional=False, hosts_only=True, allow_create=False)
+        ask_user(message, optional=False, hosts_only=True)
         return self.SAVE_HOST
 
     def save_host(self, update: Update, context: CallbackContext):
         message = update.callback_query.message if update.message is None else update.message
         event = context.user_data['event']
 
-        print(update.message)
-        print()
         if update.message is not None:
             try:
                 host = User.get(nickname=message.text)
@@ -118,11 +116,10 @@ class NewEventConversation:
                 message.reply_text(f'Mmmm no encontré a ningún peñero con el nombre {message.text}.')
                 return self.ASK_HOST
 
-            print(host)
-            print()
             event.replace_host(host)
 
-        return show_main_menu(message)
+        show_main_menu(message, context)
+        return ConversationHandler.END
 
     def cancel(self, update: Update, context: CallbackContext):
         update.message.reply_text(
