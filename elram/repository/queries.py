@@ -27,6 +27,7 @@ def sign_up(telegram_user, password: str) -> Optional[User]:
         first_name=telegram_user.first_name,
         nickname=telegram_user.username,
         is_staff=True,
+        is_host=True,
     )
     logger.info(
         'User created',

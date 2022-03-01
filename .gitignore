@@ -133,3 +133,6 @@ dmypy.json
 
 # Credentials
 auth.env
+
+# Initial data
+initial_data.json
