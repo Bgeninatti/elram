@@ -1,9 +1,8 @@
 import datetime
-import json
 import logging
 
 from peewee import (CharField, DateTimeField, IntegerField, Model, PostgresqlDatabase, BooleanField,
-                    ForeignKeyField, DecimalField, ManyToManyField, DeferredThroughModel)
+                    ForeignKeyField, DecimalField)
 
 from elram.config import load_config
 
@@ -28,9 +27,12 @@ class User(BaseModel):
     telegram_id: int = IntegerField(null=True, unique=True)
     first_name: str = CharField(null=True)
     last_name: str = CharField(null=True)
-    nickname: str = CharField()
+    nickname: str = CharField(unique=True)
     is_staff: bool = BooleanField(default=False)
     is_host: bool = BooleanField(default=False)
+
+    def __str__(self):
+        return self.nickname
 
 
 class Event(BaseModel):
@@ -57,22 +59,67 @@ class Event(BaseModel):
         11: 'Noviembre',
         12: 'Diciembre',
     }
+    DRAFT, ACTIVE, CLOSED, ABANDONED = range(4)
+    STATUS_CHOICES = (
+        (DRAFT, 'Borrador'),
+        (ACTIVE, 'Activa'),
+        (CLOSED, 'Cerrada'),
+        (ABANDONED, 'Abandonada')
+    )
 
     datetime: datetime = DateTimeField()
-    is_active: bool = BooleanField(default=True)
+    code: int = IntegerField()
+    status: str = IntegerField(default=DRAFT, choices=STATUS_CHOICES)
+
+    @classmethod
+    def get_next_event_date(cls, offset=1):
+        today = datetime.date.today()
+        return today + datetime.timedelta(weeks=offset, days=CONFIG['EVENT_WEEKDAY'] - today.weekday())
+
+    @classmethod
+    def create_first_event(cls):
+        host = User.get(nickname=CONFIG['FIRST_EVENT_HOST_NICKNAME'])
+        event = cls(
+            code=CONFIG['FIRST_EVENT_CODE'],
+            datetime=cls.get_next_event_date()
+        )
+        event.save()
+        event.add_attendee(attendee=host, is_host=True)
+        logger.info(
+            'Event created',
+            extra={
+                'code': event.code,
+                'host': host.nickname,
+            }
+        )
+        return event
 
     @classmethod
     def get_next_event(cls):
-        today = datetime.date.today()
-        next_event_date = today + datetime.timedelta(weeks=1, days=CONFIG['EVENT_WEEKDAY'] - today.weekday())
-        event = cls(
-            datetime=next_event_date
+        return cls.select().where(cls.status == cls.DRAFT).order_by(cls.code).first()
+
+    @classmethod
+    def create_event(cls, host, offset=1):
+        last_event = cls.get_last_event()
+        assert last_event is not None
+        next_code = last_event.code + 1
+        event = cls.create(
+            code=next_code,
+            datetime=cls.get_next_event_date(offset)
+        )
+        event.add_attendee(attendee=host, is_host=True)
+        logger.info(
+            'Event created',
+            extra={
+                'code': event.code,
+                'host': host.nickname,
+            }
         )
         return event
 
     @classmethod
     def get_active(cls):
-        return cls.select().where(Event.is_active == True).first()
+        return cls.select().where(cls.status == cls.ACTIVE).first()
 
     @classmethod
     def get_last_event(cls):
@@ -92,9 +139,9 @@ class Event(BaseModel):
         Attendance.create(event_id=self.id, attendee=attendee, is_host=is_host)
 
     def close(self):
-        if not self.is_active:
+        if not self.status == self.CLOSED:
             return
-        self.is_active = False
+        self.status = self.CLOSED
         self.save()
 
     def __str__(self):
@@ -121,31 +168,3 @@ class Attendance(BaseModel):
         :return: int
         """
         return self.debit - self.credit
-
-
-def populate_db(data_file):
-    models_mapping = {
-        'users': User,
-    }
-
-    with open(data_file) as f:
-        data = json.load(f)
-
-    for model_key, model_data in data.items():
-        model_class = models_mapping.get(model_key)
-        if model_class is None:
-            logger.error('No model class found', extra={'model_key': model_key})
-            continue
-        models = (model_class(**data) for data in model_data)
-        model_class.bulk_create(models)
-        logger.info(
-            'Records created',
-            extra={'model': model_class.__name__, 'records': len(model_data)},
-        )
-
-
-def init_db(db_name, user, password, host, port):
-    database.init(database=db_name, user=user, password=password, host=host, port=port)
-    database.connect()
-    database.create_tables([User, Event, Attendance])
-    return database

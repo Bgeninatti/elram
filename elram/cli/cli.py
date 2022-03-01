@@ -3,8 +3,8 @@ import click
 from elram.config import load_config
 from elram.logger import setup_logger
 import logging
-from .commands import run_bot, init_data
-from ..repository.models import init_db
+from .commands import run_bot, init_data, create_next_events
+from elram.repository.commands import init_db
 
 CONFIG = load_config()
 log = logging.getLogger('main')
@@ -22,3 +22,4 @@ def main(ctx):
 
 main.add_command(run_bot)
 main.add_command(init_data)
+main.add_command(create_next_events)

@@ -7,7 +7,7 @@ from elram.conversations.new_event import NewEventConversation
 from elram.conversations.states import MAIN_MENU, HOME, LOGIN, CLOSE_EVENT
 from elram.conversations.views import show_main_menu
 from elram.repository.models import Event
-from elram.repository.queries import sign_up, sign_in
+from elram.repository.commands import sign_up, sign_in
 
 
 logger = logging.getLogger(__name__)
