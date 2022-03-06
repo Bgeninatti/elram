@@ -5,7 +5,7 @@ import click
 
 from elram import bot
 from elram.config import load_config
-from elram.repository.commands import populate_db, update_draft_events
+from elram.repository.commands import populate_db, create_next_events
 from elram.repository.models import Event
 
 log = logging.getLogger('main')
@@ -23,9 +23,9 @@ def run_bot(bot_token):
 def init_data(data_file):
     populate_db(data_file)
     Event.create_first_event()
-    update_draft_events()
+    create_next_events()
 
 
 @click.command()
 def create_next_events():
-    update_draft_events()
+    create_next_events()

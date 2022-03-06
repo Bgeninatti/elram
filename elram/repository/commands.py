@@ -1,9 +1,6 @@
 import datetime
 import json
 import logging
-from typing import Optional
-
-from peewee import DoesNotExist
 
 from elram.config import load_config
 from elram.repository.models import User, database, Event, Attendance
@@ -40,36 +37,6 @@ def init_db(db_name, user, password, host, port):
     return database
 
 
-def sign_in(telegram_user):
-    try:
-        return User.get(User.is_staff, User.telegram_id == telegram_user.id)
-    except DoesNotExist:
-        return
-
-
-def sign_up(telegram_user, password: str) -> Optional[User]:
-    if password != CONFIG['PASSWORD']:
-        return
-
-    user = User.create(
-        telegram_id=telegram_user.id,
-        last_name=telegram_user.last_name,
-        first_name=telegram_user.first_name,
-        nickname=telegram_user.username,
-        is_staff=True,
-        is_host=True,
-    )
-    logger.info(
-        'User created',
-        extra={
-            'telegram_id': user.telegram_id,
-            'first_name': user.first_name,
-            'last_name': user.last_name,
-        }
-    )
-    return user
-
-
 def get_pending_hosts():
     """
     :return: Hosts with a future event
@@ -85,7 +52,7 @@ def get_hosts():
     return User.select().where(User.is_host).order_by(User.last_name)
 
 
-def update_draft_events():
+def create_next_events():
     pending_hosts = list(get_pending_hosts())
     hosts = list(get_hosts())
     last_host = pending_hosts[-1]

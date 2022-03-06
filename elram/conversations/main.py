@@ -3,14 +3,14 @@ import logging
 from telegram import Update, Chat
 from telegram.ext import CallbackContext, ConversationHandler, CommandHandler, Filters, MessageHandler
 from elram.conversations.command_parser import CommandParser
-from elram.repository.commands import sign_up, sign_in
-from elram.repository.services import EventService, AttendanceService, CommandException
+from elram.repository.services import EventService, AttendanceService, CommandException, UsersService
 
 logger = logging.getLogger(__name__)
 
 
 class MainConversation:
     _event_service = EventService()
+    _users_service = UsersService()
     _command_parser = CommandParser()
 
     LOGIN, LISTENING = range(2)
@@ -33,7 +33,7 @@ class MainConversation:
 
     def main(self, update: Update, context: CallbackContext):
         telegram_user = update.message.from_user
-        user = sign_in(telegram_user)
+        user = self._users_service.sign_in(telegram_user)
         if user:
             context.user_data['user'] = user
             update.message.reply_text(
@@ -50,7 +50,7 @@ class MainConversation:
     def login(self, update: Update, context: CallbackContext):
         telegram_user = update.message.from_user
         password = update.message.text
-        user = sign_up(telegram_user, password)
+        user = self._users_service.sign_up(telegram_user, password)
         if user is None:
             logger.warning(
                 'Wrong password',
