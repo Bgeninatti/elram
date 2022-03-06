@@ -3,7 +3,6 @@ import logging
 from telegram import Update, Chat
 from telegram.ext import CallbackContext, ConversationHandler, CommandHandler, Filters, MessageHandler
 from elram.conversations.command_parser import CommandParser
-from elram.conversations.views import show_main_menu
 from elram.repository.commands import sign_up, sign_in
 from elram.repository.services import EventService, AttendanceService, CommandException
 
@@ -11,7 +10,6 @@ logger = logging.getLogger(__name__)
 
 
 class MainConversation:
-    myself = 'el_ram_bot'
     _event_service = EventService()
     _command_parser = CommandParser()
 
@@ -70,7 +68,8 @@ class MainConversation:
             update.message.reply_text(
                 f'A si, de una. Vos sos {user.first_name}'
             )
-            return show_main_menu(update.message, context)
+            self._set_main_event(update.effective_chat, context)
+            return self.LISTENING
 
     def listen(self, update: Update, context: CallbackContext):
         message = update.message

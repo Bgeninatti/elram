@@ -60,16 +60,9 @@ class Event(BaseModel):
         12: 'Diciembre',
     }
     DRAFT, ACTIVE, CLOSED, ABANDONED = range(4)
-    STATUS_CHOICES = (
-        (DRAFT, 'Borrador'),
-        (ACTIVE, 'Activa'),
-        (CLOSED, 'Cerrada'),
-        (ABANDONED, 'Abandonada')
-    )
 
     datetime: datetime = DateTimeField()
     code: int = IntegerField()
-    status: str = IntegerField(default=DRAFT, choices=STATUS_CHOICES)
 
     def refresh(self):
         return type(self).get(self._pk_expr())
@@ -77,7 +70,12 @@ class Event(BaseModel):
     @classmethod
     def get_next_event_date(cls, offset=1):
         today = datetime.date.today()
-        return today + datetime.timedelta(weeks=offset, days=CONFIG['EVENT_WEEKDAY'] - today.weekday())
+        return today + datetime.timedelta(
+            weeks=offset,
+            days=CONFIG['EVENT_WEEKDAY'] - today.weekday(),
+            hours=23,
+            minutes=59,
+        )
 
     @classmethod
     def create_first_event(cls):
@@ -87,7 +85,7 @@ class Event(BaseModel):
             datetime=cls.get_next_event_date()
         )
         event.save()
-        event.add_attendee(attendee=host, is_host=True)
+        event.add_host(host)
         logger.info(
             'Event created',
             extra={
@@ -99,7 +97,7 @@ class Event(BaseModel):
 
     @classmethod
     def get_next_event(cls):
-        return cls.select().where(cls.status == cls.DRAFT).order_by(cls.code).first()
+        return cls.select().where(cls.datetime > datetime.datetime.now()).order_by(cls.code).first()
 
     @classmethod
     def create_event(cls, host, offset=1):
@@ -110,7 +108,7 @@ class Event(BaseModel):
             code=next_code,
             datetime=cls.get_next_event_date(offset)
         )
-        event.add_attendee(attendee=host, is_host=True)
+        event.add_host(host)
         logger.info(
             'Event created',
             extra={
@@ -122,7 +120,7 @@ class Event(BaseModel):
 
     @classmethod
     def get_active(cls):
-        return cls.select().join(Attendance).where(cls.status == cls.ACTIVE).first()
+        return cls.select().join(Attendance).where(cls.datetime > datetime.datetime.now()).first()
 
     @classmethod
     def get_last_event(cls):
@@ -138,11 +136,7 @@ class Event(BaseModel):
     def host(self):
         return self.attendees.where(Attendance.is_host == True).first().attendee
 
-    def replace_host(self, host):
-        # Make old host normal attendee
-        Attendance.update(is_host=False)\
-            .where(Attendance.event == self, Attendance.attendee == self.host)\
-            .execute()
+    def add_host(self, host):
         if not self.is_attendee(host):
             # Add new host if not attendee already
             Attendance.create(event_id=self.id, attendee=host, is_host=True)
@@ -151,6 +145,13 @@ class Event(BaseModel):
             Attendance.update(is_host=True)\
                 .where(Attendance.event == self, Attendance.attendee == host)\
                 .execute()
+
+    def replace_host(self, host):
+        # Make old host normal attendee
+        Attendance.update(is_host=False)\
+            .where(Attendance.event == self, Attendance.attendee == self.host)\
+            .execute()
+        self.add_host(host)
 
     def is_attendee(self, attendee: User):
         return Attendance.select()\
@@ -178,18 +179,6 @@ class Event(BaseModel):
         else:
             attendees_names = '\n'.join([f'{i + 1}. {a.attendee.nickname}' for i, a in enumerate(attendees)])
             return f'Hasta ahora van:\n{attendees_names}'
-
-    def _set_status(self, status):
-        if self.status == status:
-            return
-        self.status = status
-        self.save()
-
-    def close(self):
-        self._set_status(self.CLOSED)
-
-    def activate(self):
-        self._set_status(self.ACTIVE)
 
     def __str__(self):
         msg = (

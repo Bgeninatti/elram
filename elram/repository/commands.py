@@ -1,3 +1,4 @@
+import datetime
 import json
 import logging
 from typing import Optional
@@ -71,12 +72,12 @@ def sign_up(telegram_user, password: str) -> Optional[User]:
 
 def get_pending_hosts():
     """
-    :return: Hosts with an event in DRAFT status
+    :return: Hosts with a future event
     """
     return User.select()\
         .join(Attendance)\
         .join(Event)\
-        .where(Attendance.is_host & (Event.status == Event.DRAFT))\
+        .where(Attendance.is_host & (Event.datetime > datetime.datetime.now()))\
         .order_by(User.last_name)
 
 

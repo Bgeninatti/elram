@@ -26,6 +26,8 @@ class AttendanceService:
 
     def remove_attendance(self, nickname):
         user = self.find_user(nickname)
+        if user == self.event.host:
+            raise CommandException(f'Primero decime quien organiza la peña si no va {user.nickname}')
         self.event.remove_attendee(user)
 
     def replace_host(self, nickname):
