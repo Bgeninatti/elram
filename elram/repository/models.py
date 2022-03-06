@@ -71,6 +71,9 @@ class Event(BaseModel):
     code: int = IntegerField()
     status: str = IntegerField(default=DRAFT, choices=STATUS_CHOICES)
 
+    def refresh(self):
+        return type(self).get(self._pk_expr())
+
     @classmethod
     def get_next_event_date(cls, offset=1):
         today = datetime.date.today()
@@ -136,23 +139,32 @@ class Event(BaseModel):
         return self.attendees.where(Attendance.is_host == True).first().attendee
 
     def replace_host(self, host):
-        Attendance.delete().where((Attendance.event == self) & Attendance.is_host).execute()
-        self.add_attendee(attendee=host, is_host=True)
+        # Make old host normal attendee
+        Attendance.update(is_host=False)\
+            .where(Attendance.event == self, Attendance.attendee == self.host)\
+            .execute()
+        if not self.is_attendee(host):
+            # Add new host if not attendee already
+            Attendance.create(event_id=self.id, attendee=host, is_host=True)
+        else:
+            # Update attendee to host if already exists
+            Attendance.update(is_host=True)\
+                .where(Attendance.event == self, Attendance.attendee == host)\
+                .execute()
 
-    def add_attendee(self, attendee: User, is_host: bool = False):
-        Attendance.create(event_id=self.id, attendee=attendee, is_host=is_host)
+    def is_attendee(self, attendee: User):
+        return Attendance.select()\
+            .where(Attendance.event == self, Attendance.attendee == attendee)\
+            .exists()
 
-    def _set_status(self, status):
-        if self.status == status:
-            return
-        self.status = status
-        self.save()
+    def add_attendee(self, attendee: User):
+        if not self.is_attendee(attendee):
+            Attendance.create(event_id=self.id, attendee=attendee, is_host=False)
 
-    def close(self):
-        self._set_status(self.CLOSED)
-
-    def activate(self):
-        self._set_status(self.ACTIVE)
+    def remove_attendee(self, attendee: User):
+        Attendance.delete()\
+            .where(Attendance.event == self, Attendance.attendee == attendee)\
+            .execute()
 
     def get_attendees(self):
         return [
@@ -167,13 +179,24 @@ class Event(BaseModel):
             attendees_names = '\n'.join([f'{i + 1}. {a.attendee.nickname}' for i, a in enumerate(attendees)])
             return f'Hasta ahora van:\n{attendees_names}'
 
+    def _set_status(self, status):
+        if self.status == status:
+            return
+        self.status = status
+        self.save()
+
+    def close(self):
+        self._set_status(self.CLOSED)
+
+    def activate(self):
+        self._set_status(self.ACTIVE)
+
     def __str__(self):
         msg = (
             f'Peña #{self.code} el {self.datetime_display}.\n'
             f'La organiza {self.host.nickname}. \n'
         )
-        if self.status == self.ACTIVE:
-            msg += self.display_attendees()
+        msg += self.display_attendees()
         return msg
 
 
@@ -183,6 +206,11 @@ class Attendance(BaseModel):
     is_host = BooleanField(default=False)
     debit = DecimalField(default=0)
     credit = DecimalField(default=0)
+
+    class Meta:
+        indexes = (
+            (('attendee', 'event'), True),
+        )
 
     @property
     def balance(self):
