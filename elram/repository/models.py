@@ -1,5 +1,6 @@
 import datetime
 import logging
+import math
 
 from peewee import (CharField, DateTimeField, IntegerField, Model, PostgresqlDatabase, BooleanField,
                     ForeignKeyField, DecimalField)
@@ -24,15 +25,32 @@ class BaseModel(Model):
 
 
 class User(BaseModel):
-    telegram_id: int = IntegerField(null=True, unique=True)
-    first_name: str = CharField(null=True)
-    last_name: str = CharField(null=True)
-    nickname: str = CharField(unique=True)
-    is_staff: bool = BooleanField(default=False)
-    is_host: bool = BooleanField(default=False)
+    telegram_id = IntegerField(null=True, unique=True)
+    first_name = CharField(null=True)
+    last_name = CharField(null=True)
+    nickname = CharField(unique=True)
+    is_staff = BooleanField(default=False)
+    hidden = BooleanField(default=False)
+    is_host = BooleanField(default=False)
 
     def __str__(self):
         return self.nickname
+
+    @classmethod
+    def get_future_hosts(cls):
+        return User.select() \
+            .join(Attendance) \
+            .join(Event) \
+            .where(Attendance.is_host & (Event.datetime > datetime.datetime.now()) & ~User.hidden)\
+            .order_by(User.last_name.desc())
+
+    @classmethod
+    def get_hosts(cls):
+        return User.select().where(cls.is_host & ~cls.hidden)
+
+    @classmethod
+    def get_hidden_host(cls):
+        return cls.select().where(cls.hidden).first()
 
 
 class Event(BaseModel):
@@ -136,7 +154,18 @@ class Event(BaseModel):
     def host(self):
         return self.attendees.where(Attendance.is_host == True).first().attendee
 
+    @property
+    def total_expenses(self):
+        return round(sum(a.credit for a in self.attendees), 2)
+
+    @property
+    def effective_attendees(self):
+        return self.attendees.join(User).where(~User.hidden)
+
     def add_host(self, host):
+        if host.hidden:
+            return
+
         if not self.is_attendee(host):
             # Add new host if not attendee already
             Attendance.create(event_id=self.id, attendee=host, is_host=True)
@@ -147,6 +176,9 @@ class Event(BaseModel):
                 .execute()
 
     def replace_host(self, host):
+        if host.hidden:
+            return
+
         # Make old host normal attendee
         Attendance.update(is_host=False)\
             .where(Attendance.event == self, Attendance.attendee == self.host)\
@@ -167,25 +199,51 @@ class Event(BaseModel):
             .where(Attendance.event == self, Attendance.attendee == attendee)\
             .execute()
 
-    def get_attendees(self):
-        return [
-            a.attendee for a in self.attendees
-        ]
-
     def display_attendees(self):
-        attendees = list(self.attendees)
+        attendees = self.effective_attendees
         if len(attendees) == 1:
-            return f'Hasta ahora va {attendees[0].attendee.nickname} solo. Flojo.'
+            return f'Hasta ahora va {attendees[0].attendee.nickname} solo\n'
         else:
-            attendees_names = '\n'.join([f'{i + 1}. {a.attendee.nickname}' for i, a in enumerate(attendees)])
-            return f'Hasta ahora van:\n{attendees_names}'
+            attendees_names = '\n'.join([f'{i + 1}\- {a.attendee.nickname}' for i, a in enumerate(attendees)])
+            return f'Hasta ahora van:\n{attendees_names}\n'
+
+    def add_debit(self, user, amount, description=None):
+        Attendance\
+            .update(debit=amount, debit_description=description or '')\
+            .where(Attendance.event == self, Attendance.attendee == user)\
+            .execute()
+
+    def add_credit(self, user, amount, description=None):
+        Attendance\
+            .update(credit=amount, credit_description=description or '')\
+            .where(Attendance.event == self, Attendance.attendee == user)\
+            .execute()
+
+    def display_expenses(self):
+        per_capita = math.ceil(self.total_expenses / self.attendees.count() / 100) * 100
+        msg = f'En total se gastó `{self.total_expenses}`\n'
+        msg += f'Cada peñero tiene que pagar `{per_capita}`\n\n'
+
+        for attendance in self.attendees:
+            balance = round(attendance.balance + per_capita, 2)
+            if not balance:
+                msg += f'{attendance.attendee} 👍\n'
+            elif balance > 0:
+                msg += f'{attendance.attendee} tiene que pagar `{balance}`\n'
+            else:
+                msg += f'{attendance.attendee} tiene que recibir `{abs(balance)}`\n'
+        return msg
 
     def __str__(self):
         msg = (
-            f'Peña #{self.code} el {self.datetime_display}.\n'
-            f'La organiza {self.host.nickname}. \n'
+            f'*Peña \#{self.code} \- {self.datetime_display}*\n'
+            f'La organiza {self.host.nickname}\n'
         )
         msg += self.display_attendees()
+        msg += '\n'
+        if self.total_expenses > 0:
+            msg += self.display_expenses()
+            msg += '\n'
         return msg
 
 
@@ -194,7 +252,9 @@ class Attendance(BaseModel):
     event = ForeignKeyField(Event, related_name='attendees')
     is_host = BooleanField(default=False)
     debit = DecimalField(default=0)
+    debit_description = CharField(default='')
     credit = DecimalField(default=0)
+    credit_description = CharField(default='')
 
     class Meta:
         indexes = (
@@ -203,9 +263,4 @@ class Attendance(BaseModel):
 
     @property
     def balance(self):
-        """
-        If negative the attendee borrow money.
-        If positive the attendee contribute to the fund.
-        :return: int
-        """
         return self.debit - self.credit

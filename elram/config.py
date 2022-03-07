@@ -33,5 +33,6 @@ def load_config():
         "INITIAL_USERS_FILE": clean_setting("INITIAL_USERS_FILE"),
         "FIRST_EVENT_CODE": int(clean_setting("FIRST_EVENT_CODE")),
         "FIRST_EVENT_HOST_NICKNAME": clean_setting("FIRST_EVENT_HOST_NICKNAME"),
+        "HIDDEN_USER_NICKNAME": clean_setting("HIDDEN_USER_NICKNAME"),
     }
     return config

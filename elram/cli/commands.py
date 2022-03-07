@@ -5,8 +5,9 @@ import click
 
 from elram import bot
 from elram.config import load_config
-from elram.repository.commands import populate_db, create_next_events
+from elram.repository.commands import populate_db
 from elram.repository.models import Event
+from elram.repository.services import EventService
 
 log = logging.getLogger('main')
 CONFIG = load_config()
@@ -20,12 +21,14 @@ def run_bot(bot_token):
 
 @click.command()
 @click.argument('data_file', type=Path, default=CONFIG['INITIAL_USERS_FILE'])
-def init_data(data_file):
+def init(data_file):
+    service = EventService()
     populate_db(data_file)
     Event.create_first_event()
-    create_next_events()
+    service.create_future_events()
 
 
 @click.command()
 def create_next_events():
-    create_next_events()
+    service = EventService()
+    service.create_future_events()

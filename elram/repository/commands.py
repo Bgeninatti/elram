@@ -1,4 +1,3 @@
-import datetime
 import json
 import logging
 
@@ -35,29 +34,3 @@ def init_db(db_name, user, password, host, port):
     database.connect()
     database.create_tables([User, Event, Attendance])
     return database
-
-
-def get_pending_hosts():
-    """
-    :return: Hosts with a future event
-    """
-    return User.select()\
-        .join(Attendance)\
-        .join(Event)\
-        .where(Attendance.is_host & (Event.datetime > datetime.datetime.now()))\
-        .order_by(User.last_name)
-
-
-def get_hosts():
-    return User.select().where(User.is_host).order_by(User.last_name)
-
-
-def create_next_events():
-    pending_hosts = list(get_pending_hosts())
-    hosts = list(get_hosts())
-    last_host = pending_hosts[-1]
-    last_host_index = hosts.index(last_host)
-    for host in hosts[last_host_index:] + hosts[:last_host_index]:
-        if host in pending_hosts:
-            continue
-        Event.create_event(host)
