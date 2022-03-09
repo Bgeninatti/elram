@@ -1,12 +1,12 @@
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta, date
 from decimal import Decimal, InvalidOperation
 from typing import Optional
 
 import attr
 from peewee import DoesNotExist
 
-from elram.repository.models import Event, User, Attendance
+from elram.repository.models import Event, User, AttendeeNotFound
 from elram.config import load_config
 
 CONFIG = load_config()
@@ -54,22 +54,6 @@ class UsersService:
         )
         return user
 
-    @staticmethod
-    def last_host_in_alphabet():
-        """
-        :return: Hosts with a future event
-        """
-        return User.select() \
-            .join(Attendance) \
-            .join(Event) \
-            .where(Attendance.is_host & (Event.datetime > datetime.datetime.now()) & ~User.hidden) \
-            .order_by(User.last_name.desc())\
-            .first()
-
-    @staticmethod
-    def get_hosts():
-        return User.select().where(User.is_host & ~User.hidden).order_by(User.last_name)
-
 
 @attr.s
 class AttendanceService:
@@ -111,13 +95,23 @@ class EventService:
         except DoesNotExist:
             raise CommandException(f'No encontré la peña {event_code}')
 
+    @classmethod
+    def get_next_event_date(cls, offset=1):
+        today = date.today()
+        return today + timedelta(
+            weeks=offset,
+            days=CONFIG['EVENT_WEEKDAY'] - today.weekday(),
+            hours=23,
+            minutes=59,
+        )
+
     def create_event(self, host, offset=1):
         last_event = Event.get_last_event()
         assert last_event is not None
         next_code = last_event.code + 1
         event = Event.create(
             code=next_code,
-            datetime=Event.get_next_event_date(offset)
+            datetime=self.get_next_event_date(offset)
         )
         event.add_host(host)
         logger.info(
@@ -127,10 +121,31 @@ class EventService:
                 'host': host.nickname,
             }
         )
+        hidden_host = User.get_hidden_host()
+        event.add_attendee(hidden_host)
         return event
 
-    @staticmethod
-    def create_future_events():
+    def create_first_event(self):
+        # FIXME: The first event should be created by `create_future_event` somehow
+        host = User.get(nickname=CONFIG['FIRST_EVENT_HOST_NICKNAME'])
+        event = Event(
+            code=CONFIG['FIRST_EVENT_CODE'],
+            datetime=self.get_next_event_date()
+        )
+        event.save()
+        event.add_host(host)
+        logger.info(
+            'Event created',
+            extra={
+                'code': event.code,
+                'host': host.nickname,
+            }
+        )
+        hidden_host = User.get_hidden_host()
+        event.add_attendee(hidden_host)
+        return event
+
+    def create_future_events(self):
         future_hosts = list(User.get_future_hosts())
         last_host = future_hosts[-1]
         hosts = list(User.get_hosts())
@@ -139,15 +154,12 @@ class EventService:
         for offset, host in ordered_hosts:
             if host in future_hosts:
                 continue
-            event = Event.create_event(host, offset=offset)
-            hidden_host = User.get_hidden_host()
-            event.add_attendee(hidden_host)
+            self.create_event(host, offset=offset)
 
 
 @attr.s
 class AccountabilityService:
     event: Event = attr.ib()
-    users_service = attr.ib(factory=lambda: UsersService())
 
     def _get_amount(self, str_value):
         try:
@@ -156,24 +168,30 @@ class AccountabilityService:
             raise CommandException(f'No entiendo que cantidad de plata es esta: {str_value}')
 
     def add_expense(self, nickname: str, amount: str, description: str = None):
-        user = self.users_service.find_user(nickname)
-        if not self.event.is_attendee(user):
-            raise CommandException(f'{user.nickname} no es asistente de esta peña.')
+        nickname = nickname.title()
+        try:
+            attendee = self.event.find_attendee(nickname)
+        except AttendeeNotFound:
+            raise CommandException(f'{nickname} no es asistente de esta peña.')
         amount = self._get_amount(amount)
         logger.info(
             "Adding expense",
-            extra={'user': user, 'amount': amount, 'description': description}
+            extra={'attendee': attendee, 'amount': amount, 'description': description}
         )
-        self.event.add_credit(user, amount, description)
+        attendee.add_credit(amount, description)
+        self.event.hidden_host.increment_debit(amount, description)
 
     def add_payment(self, nickname: str, amount: str):
+        nickname = nickname.title()
+        try:
+            attendee = self.event.find_attendee(nickname)
+        except AttendeeNotFound:
+            raise CommandException(f'{nickname} no es asistente de esta peña.')
 
-        user = self.users_service.find_user(nickname)
-        if not self.event.is_attendee(user):
-            raise CommandException(f'{user.nickname} no es asistente de esta peña.')
         amount = self._get_amount(amount)
         logger.info(
             "Adding payment",
-            extra={'user': user, 'amount': amount}
+            extra={'attendee': attendee, 'amount': amount}
         )
-        self.event.add_debit(user, amount)
+        attendee.add_debit(amount)
+        self.event.hidden_host.increment_credit(amount)

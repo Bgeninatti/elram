@@ -24,7 +24,7 @@ def run_bot(bot_token):
 def init(data_file):
     service = EventService()
     populate_db(data_file)
-    Event.create_first_event()
+    service.create_first_event()
     service.create_future_events()
 
 

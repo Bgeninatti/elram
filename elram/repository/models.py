@@ -12,6 +12,14 @@ CONFIG = load_config()
 logger = logging.getLogger(__name__)
 
 
+class NotFound(Exception):
+    ...
+
+
+class AttendeeNotFound(NotFound):
+    ...
+
+
 class BaseModel(Model):
     updated: datetime = DateTimeField(default=datetime.datetime.now)
     created: datetime = DateTimeField(default=datetime.datetime.now)
@@ -85,64 +93,9 @@ class Event(BaseModel):
     def refresh(self):
         return type(self).get(self._pk_expr())
 
-    @classmethod
-    def get_next_event_date(cls, offset=1):
-        today = datetime.date.today()
-        return today + datetime.timedelta(
-            weeks=offset,
-            days=CONFIG['EVENT_WEEKDAY'] - today.weekday(),
-            hours=23,
-            minutes=59,
-        )
-
-    @classmethod
-    def create_first_event(cls):
-        host = User.get(nickname=CONFIG['FIRST_EVENT_HOST_NICKNAME'])
-        event = cls(
-            code=CONFIG['FIRST_EVENT_CODE'],
-            datetime=cls.get_next_event_date()
-        )
-        event.save()
-        event.add_host(host)
-        logger.info(
-            'Event created',
-            extra={
-                'code': event.code,
-                'host': host.nickname,
-            }
-        )
-        return event
-
-    @classmethod
-    def get_next_event(cls):
-        return cls.select().where(cls.datetime > datetime.datetime.now()).order_by(cls.code).first()
-
-    @classmethod
-    def create_event(cls, host, offset=1):
-        last_event = cls.get_last_event()
-        assert last_event is not None
-        next_code = last_event.code + 1
-        event = cls.create(
-            code=next_code,
-            datetime=cls.get_next_event_date(offset)
-        )
-        event.add_host(host)
-        logger.info(
-            'Event created',
-            extra={
-                'code': event.code,
-                'host': host.nickname,
-            }
-        )
-        return event
-
-    @classmethod
-    def get_active(cls):
-        return cls.select().join(Attendance).where(cls.datetime > datetime.datetime.now()).first()
-
-    @classmethod
-    def get_last_event(cls):
-        return cls.select().order_by(cls.created.desc()).first()
+    @property
+    def hidden_host(self):
+        return self.attendees.join(User).where(User.hidden).first()
 
     @property
     def datetime_display(self):
@@ -161,6 +114,24 @@ class Event(BaseModel):
     @property
     def effective_attendees(self):
         return self.attendees.join(User).where(~User.hidden)
+
+    @classmethod
+    def get_next_event(cls):
+        return cls.select().where(cls.datetime > datetime.datetime.now()).order_by(cls.code).first()
+
+    @classmethod
+    def get_active(cls):
+        return cls.select().join(Attendance).where(cls.datetime > datetime.datetime.now()).first()
+
+    @classmethod
+    def get_last_event(cls):
+        return cls.select().order_by(cls.created.desc()).first()
+
+    def find_attendee(self, nickname):
+        attendee = self.effective_attendees.where(User.nickname == nickname).first()
+        if attendee is None:
+            raise AttendeeNotFound(f'{nickname} no es asistente de esta peña.')
+        return attendee
 
     def add_host(self, host):
         if host.hidden:
@@ -195,36 +166,24 @@ class Event(BaseModel):
             Attendance.create(event_id=self.id, attendee=attendee, is_host=False)
 
     def remove_attendee(self, attendee: User):
+        if attendee.hidden:
+            return
+
         Attendance.delete()\
             .where(Attendance.event == self, Attendance.attendee == attendee)\
             .execute()
 
     def display_attendees(self):
         attendees = self.effective_attendees
-        if len(attendees) == 1:
-            return f'Hasta ahora va {attendees[0].attendee.nickname} solo\n'
-        else:
-            attendees_names = '\n'.join([f'{i + 1}\- {a.attendee.nickname}' for i, a in enumerate(attendees)])
-            return f'Hasta ahora van:\n{attendees_names}\n'
-
-    def add_debit(self, user, amount, description=None):
-        Attendance\
-            .update(debit=amount, debit_description=description or '')\
-            .where(Attendance.event == self, Attendance.attendee == user)\
-            .execute()
-
-    def add_credit(self, user, amount, description=None):
-        Attendance\
-            .update(credit=amount, credit_description=description or '')\
-            .where(Attendance.event == self, Attendance.attendee == user)\
-            .execute()
+        attendees_names = '\n'.join([f'{i + 1}\- {a.attendee.nickname}' for i, a in enumerate(attendees)])
+        return f'Hasta ahora van:\n{attendees_names}\n'
 
     def display_expenses(self):
-        per_capita = math.ceil(self.total_expenses / self.attendees.count() / 100) * 100
+        per_capita = math.ceil(self.total_expenses / self.effective_attendees.count() / 100) * 100
         msg = f'En total se gastó `{self.total_expenses}`\n'
         msg += f'Cada peñero tiene que pagar `{per_capita}`\n\n'
 
-        for attendance in self.attendees:
+        for attendance in self.effective_attendees:
             balance = round(attendance.balance + per_capita, 2)
             if not balance:
                 msg += f'{attendance.attendee} 👍\n'
@@ -237,7 +196,7 @@ class Event(BaseModel):
     def __str__(self):
         msg = (
             f'*Peña \#{self.code} \- {self.datetime_display}*\n'
-            f'La organiza {self.host.nickname}\n'
+            f'La organiza {self.host}\n'
         )
         msg += self.display_attendees()
         msg += '\n'
@@ -264,3 +223,26 @@ class Attendance(BaseModel):
     @property
     def balance(self):
         return self.debit - self.credit
+
+    def add_credit(self, amount, description=None):
+        self.credit = amount
+        self.credit_description = description or ''
+        self.save()
+
+    def increment_credit(self, amount, description=None):
+        self.credit = amount
+        self.credit_description = description or ''
+        self.save()
+
+    def add_debit(self, amount, description=None):
+        self.debit = amount
+        self.debit_description = description or ''
+        self.save()
+
+    def increment_debit(self, amount, description=None):
+        self.debit += amount
+        self.debit_description = description or ''
+        self.save()
+
+    def __str__(self):
+        return f'<Attendee {self.event.id}#{self.attendee}>'
