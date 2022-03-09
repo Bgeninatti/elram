@@ -6,7 +6,7 @@ from typing import Optional
 import attr
 from peewee import DoesNotExist
 
-from elram.repository.models import Event, User, AttendeeNotFound
+from elram.repository.models import Event, User, AttendeeNotFound, Account
 from elram.config import load_config
 
 CONFIG = load_config()
@@ -160,8 +160,30 @@ class EventService:
 @attr.s
 class AccountabilityService:
     event: Event = attr.ib()
+    _EXPENSE = None
+    _REFOUND = None
+    _CONTRIBUTION = None
 
-    def _get_amount(self, str_value):
+    @property
+    def EXPENSE(self):
+        if self._EXPENSE is None:
+            self._EXPENSE = Account.get(name='Expenses')
+        return self._EXPENSE
+
+    @property
+    def REFOUND(self):
+        if self._REFOUND is None:
+            self._REFOUND = Account.get(name='Refunds')
+        return self._REFOUND
+
+    @property
+    def CONTRIBUTION(self):
+        if self._CONTRIBUTION is None:
+            self._CONTRIBUTION = Account.get(name='Contributions')
+        return self._CONTRIBUTION
+
+    @staticmethod
+    def _get_amount(str_value):
         try:
             return Decimal(str_value)
         except InvalidOperation:
@@ -178,8 +200,8 @@ class AccountabilityService:
             "Adding expense",
             extra={'attendee': attendee, 'amount': amount, 'description': description}
         )
-        attendee.add_credit(amount, description)
-        self.event.hidden_host.increment_debit(amount, description)
+        attendee.add_credit(amount, self.EXPENSE, description=description)
+        self.event.hidden_host.add_debit(amount, self.EXPENSE, description=description)
 
     def add_payment(self, nickname: str, amount: str):
         nickname = nickname.title()
@@ -193,5 +215,5 @@ class AccountabilityService:
             "Adding payment",
             extra={'attendee': attendee, 'amount': amount}
         )
-        attendee.add_debit(amount)
-        self.event.hidden_host.increment_credit(amount)
+        attendee.add_debit(amount, self.REFOUND)
+        self.event.hidden_host.add_credit(amount, self.REFOUND)

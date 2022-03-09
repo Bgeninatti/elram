@@ -2,7 +2,7 @@ import json
 import logging
 
 from elram.config import load_config
-from elram.repository.models import User, database, Event, Attendance
+from elram.repository.models import User, database, Event, Attendance, Account, Transaction
 
 CONFIG = load_config()
 logger = logging.getLogger('main')
@@ -11,6 +11,7 @@ logger = logging.getLogger('main')
 def populate_db(data_file):
     models_mapping = {
         'users': User,
+        'accounts': Account,
     }
 
     with open(data_file) as f:
@@ -32,5 +33,5 @@ def populate_db(data_file):
 def init_db(db_name, user, password, host, port):
     database.init(database=db_name, user=user, password=password, host=host, port=port)
     database.connect()
-    database.create_tables([User, Event, Attendance])
+    database.create_tables([User, Event, Attendance, Account, Transaction])
     return database

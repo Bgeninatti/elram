@@ -3,7 +3,7 @@ import logging
 import math
 
 from peewee import (CharField, DateTimeField, IntegerField, Model, PostgresqlDatabase, BooleanField,
-                    ForeignKeyField, DecimalField)
+                    ForeignKeyField, DecimalField, fn)
 
 from elram.config import load_config
 
@@ -210,10 +210,6 @@ class Attendance(BaseModel):
     attendee = ForeignKeyField(User, related_name='attendances')
     event = ForeignKeyField(Event, related_name='attendees')
     is_host = BooleanField(default=False)
-    debit = DecimalField(default=0)
-    debit_description = CharField(default='')
-    credit = DecimalField(default=0)
-    credit_description = CharField(default='')
 
     class Meta:
         indexes = (
@@ -221,28 +217,53 @@ class Attendance(BaseModel):
         )
 
     @property
+    def debit(self):
+        debit = Transaction\
+            .select(fn.SUM(Transaction.debit))\
+            .where(Transaction.attendance == self).scalar()
+        return debit or 0
+
+    @property
+    def credit(self):
+        credit = Transaction\
+            .select(fn.SUM(Transaction.credit))\
+            .where(Transaction.attendance == self).scalar()
+        return credit or 0
+
+    @property
     def balance(self):
         return self.debit - self.credit
 
-    def add_credit(self, amount, description=None):
-        self.credit = amount
-        self.credit_description = description or ''
-        self.save()
+    def add_credit(self, amount, account, description=None):
+        return Transaction.create(
+            attendance=self,
+            account=account,
+            credit=amount,
+            description=description or '',
+        )
 
-    def increment_credit(self, amount, description=None):
-        self.credit = amount
-        self.credit_description = description or ''
-        self.save()
-
-    def add_debit(self, amount, description=None):
-        self.debit = amount
-        self.debit_description = description or ''
-        self.save()
-
-    def increment_debit(self, amount, description=None):
-        self.debit += amount
-        self.debit_description = description or ''
-        self.save()
+    def add_debit(self, amount, account, description=None):
+        return Transaction.create(
+            attendance=self,
+            account=account,
+            debit=amount,
+            description=description or '',
+        )
 
     def __str__(self):
         return f'<Attendee {self.event.id}#{self.attendee}>'
+
+
+class Account(BaseModel):
+    name = CharField(unique=True)
+
+    def __str__(self):
+        return f'<Account {self.name}>'
+
+
+class Transaction(BaseModel):
+    attendance = ForeignKeyField(Attendance, related_name='transactions')
+    account = ForeignKeyField(Account, related_name='transactions')
+    description = CharField(default='')
+    debit = DecimalField(default=0)
+    credit = DecimalField(default=0)
