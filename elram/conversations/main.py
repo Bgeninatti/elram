@@ -98,6 +98,8 @@ class MainConversation:
                 self._accountability_service.add_expense(**kwargs)
             elif command == 'add_payment':
                 self._accountability_service.add_payment(**kwargs)
+            elif command == 'add_refund':
+                self._accountability_service.add_refound(**kwargs)
             elif command == 'next_event':
                 event = self._event_service.find_event_by_code(
                     event_code=context.user_data['event'].code + 1,

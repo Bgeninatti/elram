@@ -43,14 +43,12 @@ class CommandParser:
         'add_payment': (
             r'^(?P<nickname>\w+) pagó (?P<amount>([1-9][0-9]*\.?[0-9]*)|(\.[0-9]+))$',
             r'^(?P<nickname>\w+) pago (?P<amount>([1-9][0-9]*\.?[0-9]*)|(\.[0-9]+))$',
-            r'^(?P<nickname>\w+) pagó (?P<amount>([1-9][0-9]*\.?[0-9]*)|(\.[0-9]+))$',
-            r'^(?P<nickname>\w+) pago (?P<amount>([1-9][0-9]*\.?[0-9]*)|(\.[0-9]+))$',
+            r'^(?P<nickname>\w+) pagó (?P<amount>([1-9][0-9]*\.?[0-9]*)|(\.[0-9]+)) a (?P<to_nickname>\w+)$',
+            r'^(?P<nickname>\w+) pago (?P<amount>([1-9][0-9]*\.?[0-9]*)|(\.[0-9]+)) a (?P<to_nickname>\w+)$',
         ),
         'add_refund': (
-            r'^(?P<nickname>\w+) recibió (?P<amount>([1-9][0-9]*\.?[0-9]*)|(\.[0-9]+))$',
-            r'^(?P<nickname>\w+) recibio (?P<amount>([1-9][0-9]*\.?[0-9]*)|(\.[0-9]+))$',
-            r'^(?P<nickname>\w+) recuperó (?P<amount>([1-9][0-9]*\.?[0-9]*)|(\.[0-9]+))$',
-            r'^(?P<nickname>\w+) recupero (?P<amount>([1-9][0-9]*\.?[0-9]*)|(\.[0-9]+))$',
+            r'^el fondo pagó (?P<amount>([1-9][0-9]*\.?[0-9]*)|(\.[0-9]+)) a (?P<nickname>\w+)$',
+            r'^el fondo pago (?P<amount>([1-9][0-9]*\.?[0-9]*)|(\.[0-9]+)) a (?P<nickname>\w+)$',
         ),
         'next_event': (
             r'proxima peña$',

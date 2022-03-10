@@ -28,6 +28,6 @@ build:
 	$(COMPOSE) build
 
 stop:
-	$(COMPOSE) down
+	$(COMPOSE) down --remove-orphans
 
 .PHONY: help run shell test check-imports check-style build stop

@@ -189,12 +189,15 @@ class AccountabilityService:
         except InvalidOperation:
             raise CommandException(f'No entiendo que cantidad de plata es esta: {str_value}')
 
-    def add_expense(self, nickname: str, amount: str, description: str = None):
-        nickname = nickname.title()
+    def _find_attendee(self, nickname):
         try:
             attendee = self.event.find_attendee(nickname)
-        except AttendeeNotFound:
-            raise CommandException(f'{nickname} no es asistente de esta peña.')
+        except AttendeeNotFound as ex:
+            raise CommandException(str(ex))
+        return attendee
+
+    def add_expense(self, nickname: str, amount: str, description: str = None):
+        attendee = self._find_attendee(nickname.title())
         amount = self._get_amount(amount)
         logger.info(
             "Adding expense",
@@ -203,17 +206,32 @@ class AccountabilityService:
         attendee.add_credit(amount, self.EXPENSE, description=description)
         self.event.hidden_host.add_debit(amount, self.EXPENSE, description=description)
 
-    def add_payment(self, nickname: str, amount: str):
-        nickname = nickname.title()
-        try:
-            attendee = self.event.find_attendee(nickname)
-        except AttendeeNotFound:
-            raise CommandException(f'{nickname} no es asistente de esta peña.')
+    def add_payment(self, nickname: str, amount: str, to_nickname: str = None):
+        payment_to_found = to_nickname is None
+
+        attendee = self._find_attendee(nickname.title())
+        to_attendee = None
+        if not payment_to_found:
+            to_attendee = self._find_attendee(to_nickname.title())
+        hidden_host = self.event.hidden_host
 
         amount = self._get_amount(amount)
         logger.info(
             "Adding payment",
-            extra={'attendee': attendee, 'amount': amount}
+            extra={'from': attendee, 'to': to_attendee, 'amount': amount}
+        )
+        attendee.add_credit(amount, self.REFOUND)
+        hidden_host.add_debit(amount, self.EXPENSE)
+        if not payment_to_found:
+            to_attendee.add_debit(amount, self.REFOUND)
+            hidden_host.add_cebit(amount, self.EXPENSE)
+
+    def add_refound(self, nickname: str, amount: str):
+        attendee = self._find_attendee(nickname.title())
+        amount = self._get_amount(amount)
+        logger.info(
+            "Adding refound",
+            extra={'attendee': attendee, 'amount': amount,}
         )
         attendee.add_debit(amount, self.REFOUND)
         self.event.hidden_host.add_credit(amount, self.REFOUND)

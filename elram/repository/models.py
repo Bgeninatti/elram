@@ -2,6 +2,7 @@ import datetime
 import logging
 import math
 
+import attr
 from peewee import (CharField, DateTimeField, IntegerField, Model, PostgresqlDatabase, BooleanField,
                     ForeignKeyField, DecimalField, fn)
 
@@ -108,20 +109,12 @@ class Event(BaseModel):
         return self.attendees.where(Attendance.is_host == True).first().attendee
 
     @property
-    def total_expenses(self):
-        return round(sum(a.credit for a in self.attendees), 2)
-
-    @property
     def effective_attendees(self):
         return self.attendees.join(User).where(~User.hidden)
 
     @classmethod
     def get_next_event(cls):
         return cls.select().where(cls.datetime > datetime.datetime.now()).order_by(cls.code).first()
-
-    @classmethod
-    def get_active(cls):
-        return cls.select().join(Attendance).where(cls.datetime > datetime.datetime.now()).first()
 
     @classmethod
     def get_last_event(cls):
@@ -178,32 +171,25 @@ class Event(BaseModel):
         attendees_names = '\n'.join([f'{i + 1}\- {a.attendee.nickname}' for i, a in enumerate(attendees)])
         return f'Hasta ahora van:\n{attendees_names}\n'
 
-    def display_expenses(self):
-        per_capita = math.ceil(self.total_expenses / self.effective_attendees.count() / 100) * 100
-        msg = f'En total se gastó `{self.total_expenses}`\n'
-        msg += f'Cada peñero tiene que pagar `{per_capita}`\n\n'
-
-        for attendance in self.effective_attendees:
-            balance = round(attendance.balance + per_capita, 2)
-            if not balance:
-                msg += f'{attendance.attendee} 👍\n'
-            elif balance > 0:
-                msg += f'{attendance.attendee} tiene que pagar `{balance}`\n'
-            else:
-                msg += f'{attendance.attendee} tiene que recibir `{abs(balance)}`\n'
-        return msg
-
     def __str__(self):
+        financial_status = EventFinancialStatus(event=self, cost_account=Account.get(name='Expenses'))
         msg = (
             f'*Peña \#{self.code} \- {self.datetime_display}*\n'
             f'La organiza {self.host}\n'
         )
         msg += self.display_attendees()
         msg += '\n'
-        if self.total_expenses > 0:
-            msg += self.display_expenses()
+        if financial_status.total_cost > 0:
+            msg += financial_status.display()
             msg += '\n'
         return msg
+
+
+class Account(BaseModel):
+    name = CharField(unique=True)
+
+    def __str__(self):
+        return f'<Account {self.name}>'
 
 
 class Attendance(BaseModel):
@@ -218,17 +204,35 @@ class Attendance(BaseModel):
 
     @property
     def debit(self):
-        debit = Transaction\
-            .select(fn.SUM(Transaction.debit))\
-            .where(Transaction.attendance == self).scalar()
-        return debit or 0
+        return self.get_debit()
 
     @property
     def credit(self):
+        return self.get_credit()
+
+    def get_debit(self, account: Account = None):
+        debit = Transaction\
+            .select(fn.SUM(Transaction.debit))\
+            .where(Transaction.attendance == self)
+        if account is not None:
+            debit = debit.where(Transaction.account == account)
+        debit = debit.scalar()
+        return debit or 0
+
+    def get_credit(self, account: Account = None):
         credit = Transaction\
             .select(fn.SUM(Transaction.credit))\
-            .where(Transaction.attendance == self).scalar()
+            .where(Transaction.attendance == self)
+        if account is not None:
+            credit = credit.where(Transaction.account == account)
+        credit = credit.scalar()
         return credit or 0
+
+    def get_transactions(self, account: Account = None):
+        transactions = Transaction.select().where(Transaction.attendance == self)
+        if account is not None:
+            transactions = transactions.where(Transaction.account == account)
+        return transactions
 
     @property
     def balance(self):
@@ -254,16 +258,90 @@ class Attendance(BaseModel):
         return f'<Attendee {self.event.id}#{self.attendee}>'
 
 
-class Account(BaseModel):
-    name = CharField(unique=True)
-
-    def __str__(self):
-        return f'<Account {self.name}>'
-
-
 class Transaction(BaseModel):
     attendance = ForeignKeyField(Attendance, related_name='transactions')
     account = ForeignKeyField(Account, related_name='transactions')
     description = CharField(default='')
     debit = DecimalField(default=0)
     credit = DecimalField(default=0)
+
+
+@attr.s
+class EventFinancialStatus:
+    event: Event = attr.ib()
+    cost_account: Account = attr.ib()
+    _total_expense = attr.ib(init=False, default=None)
+    _cost_per_capita = attr.ib(init=False, default=None)
+    _per_capita_contribution = attr.ib(init=False, default=None)
+    _effective_cost_per_capita = attr.ib(init=False, default=None)
+    _attendees_count = attr.ib(init=False, default=None)
+    _hidden_host_balance = attr.ib(init=False, default=None)
+
+    @property
+    def attendees_count(self):
+        if self._attendees_count is None:
+            self._attendees_count = self.event.effective_attendees.count()
+        return self._attendees_count
+
+    @property
+    def total_cost(self):
+        if self._total_expense is None:
+            self._total_expense = round(sum(
+                a.get_credit(account=self.cost_account)
+                for a in self.event.attendees
+            ), 2)
+        return self._total_expense
+
+    @property
+    def cost_per_capita(self):
+        if self._cost_per_capita is None:
+            self._cost_per_capita = self.total_cost / self.attendees_count
+        return self._cost_per_capita
+
+    @property
+    def per_capita_contribution(self):
+        if self._per_capita_contribution is None:
+            self._per_capita_contribution = self.effective_cost_per_capita - self.cost_per_capita
+        return self._per_capita_contribution
+
+    @property
+    def effective_cost_per_capita(self):
+        if self._effective_cost_per_capita is None:
+            self._effective_cost_per_capita = math.ceil(self.cost_per_capita / 100) * 100
+        return self._effective_cost_per_capita
+
+    def display(self):
+        effective_attendees = self.event.effective_attendees
+        msg = f'En total se gastó `{self.total_cost}`\n'
+        for attendance in effective_attendees:
+            credit = round(attendance.get_credit(self.cost_account), 2)
+            if credit > 0:
+                msg += f'\* {attendance.attendee} gastó `{credit}`\n'
+
+        msg += f'\nCada peñero tiene que pagar `{self.effective_cost_per_capita}`\n'
+
+        for attendance in effective_attendees:
+            balance = round(float(attendance.balance + self.effective_cost_per_capita), 2)
+            if not balance:
+                msg += f'\* {attendance.attendee} 👍\n'
+            elif balance > 0:
+                msg += f'\* {attendance.attendee} tiene que pagar `{balance}`\n'
+            else:
+                msg += f'\* {attendance.attendee} tiene que recibir `{abs(balance)}`\n'
+        """
+        total_contribution = self.per_capita_contribution * self.attendees_count
+        hh_balance = self.effective_cost_per_capita * self.attendees_count - self.total_cost
+        if hh_balance == total_contribution:
+            msg += f'\nEl fondo recaudó `{total_contribution}`\n'
+        else:
+            msg += f'\nEl fondo tiene que recaudar `{total_contribution}`'
+
+            if hh_balance < 0:
+                msg += f', pero debe `{abs(hh_balance)}`\n'
+            else:
+                msg += f', pero recaudó `{hh_balance}`\n'
+        """
+        return msg
+
+    def __str__(self):
+        return f'<EventFinancialStatus #{self.event}>'
