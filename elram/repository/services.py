@@ -1,12 +1,13 @@
 import logging
-from datetime import datetime, timedelta, date
+from datetime import datetime, timedelta, date, time
 from decimal import Decimal, InvalidOperation
 from typing import Optional
 
 import attr
 from peewee import DoesNotExist
 
-from elram.repository.models import Event, User, AttendeeNotFound, Account
+from elram.repository.models import Event, User, AttendeeNotFound, Account, EventFinancialStatus, Transaction, \
+    Attendance
 from elram.config import load_config
 
 CONFIG = load_config()
@@ -59,19 +60,31 @@ class UsersService:
 class AttendanceService:
     event: Event = attr.ib()
     users_service = attr.ib(factory=lambda: UsersService())
+    accountability_service = attr.ib(default=None)
+
+    def __attrs_post_init__(self):
+        self.accountability_service = AccountabilityService(event=self.event)
+
+    def _add_attendance_for_user(self, user):
+        attendee = self.event.add_attendee(user)
+        self.accountability_service.create_social_fee_transaction(attendee)
+        self.accountability_service.refresh_social_fees()
 
     def add_attendance(self, nickname):
         user = self.users_service.find_user(nickname)
-        self.event.add_attendee(user)
+        self._add_attendance_for_user(user)
 
     def remove_attendance(self, nickname):
         user = self.users_service.find_user(nickname)
         if user == self.event.host:
             raise CommandException(f'Primero decime quien organiza la peña si no va {user.nickname}')
         self.event.remove_attendee(user)
+        self.accountability_service.refresh_social_fees()
 
     def replace_host(self, nickname):
         user = self.users_service.find_user(nickname)
+        if not self.event.is_attendee(user):
+            self._add_attendance_for_user(user)
         self.event.replace_host(user)
 
     def is_attendee(self, nickname):
@@ -98,12 +111,11 @@ class EventService:
     @classmethod
     def get_next_event_date(cls, offset=1):
         today = date.today()
-        return today + timedelta(
-            weeks=offset,
-            days=CONFIG['EVENT_WEEKDAY'] - today.weekday(),
-            hours=23,
-            minutes=59,
-        )
+        if today.weekday() == CONFIG['EVENT_WEEKDAY']:
+            day = today
+        else:
+            day = today + timedelta(weeks=offset, days=CONFIG['EVENT_WEEKDAY'] - today.weekday())
+        return datetime.combine(day, time(23, 59))
 
     def create_event(self, host, offset=1):
         last_event = Event.get_last_event()
@@ -113,7 +125,9 @@ class EventService:
             code=next_code,
             datetime=self.get_next_event_date(offset)
         )
-        event.add_host(host)
+        accountability_service = AccountabilityService(event=event)
+        attendee = event.add_host(host)
+        accountability_service.create_social_fee_transaction(attendee)
         logger.info(
             'Event created',
             extra={
@@ -128,12 +142,13 @@ class EventService:
     def create_first_event(self):
         # FIXME: The first event should be created by `create_future_event` somehow
         host = User.get(nickname=CONFIG['FIRST_EVENT_HOST_NICKNAME'])
-        event = Event(
+        event = Event.create(
             code=CONFIG['FIRST_EVENT_CODE'],
             datetime=self.get_next_event_date()
         )
-        event.save()
-        event.add_host(host)
+        accountability_service = AccountabilityService(event=event)
+        attendee = event.add_host(host)
+        accountability_service.create_social_fee_transaction(attendee)
         logger.info(
             'Event created',
             extra={
@@ -163,6 +178,7 @@ class AccountabilityService:
     _EXPENSE = None
     _REFOUND = None
     _CONTRIBUTION = None
+    _SOCIAL_FEE = None
 
     @property
     def EXPENSE(self):
@@ -182,6 +198,12 @@ class AccountabilityService:
             self._CONTRIBUTION = Account.get(name='Contributions')
         return self._CONTRIBUTION
 
+    @property
+    def SOCIAL_FEE(self):
+        if self._SOCIAL_FEE is None:
+            self._SOCIAL_FEE = Account.get(name='Social Fee')
+        return self._SOCIAL_FEE
+
     @staticmethod
     def _get_amount(str_value):
         try:
@@ -196,15 +218,44 @@ class AccountabilityService:
             raise CommandException(str(ex))
         return attendee
 
+    def create_social_fee_transaction(self, attendee):
+        Transaction.create(
+            attendance=attendee,
+            account=self.SOCIAL_FEE,
+            description=f'Cuota peña #{self.event.code}',
+        )
+        Transaction.create(
+            attendance=attendee,
+            account=self.CONTRIBUTION,
+            description=f'Contribución peña #{self.event.code}',
+        )
+
+    def refresh_social_fees(self):
+        financial_status = EventFinancialStatus(event=self.event, cost_account=self.EXPENSE)
+        cost = financial_status.cost_per_capita
+        contribution = financial_status.per_capita_contribution
+        logger.info(
+            "Setting social fee",
+            extra={'cost': cost, 'contribution': contribution, 'event': self.event}
+        )
+        for attendee in self.event.effective_attendees:
+            Transaction.update(debit=financial_status.cost_per_capita) \
+                .where((Transaction.attendance == attendee) & (Transaction.account == self.SOCIAL_FEE))\
+                .execute()
+            Transaction.update(debit=financial_status.per_capita_contribution) \
+                .where((Transaction.attendance == attendee) & (Transaction.account == self.CONTRIBUTION))\
+                .execute()
+
     def add_expense(self, nickname: str, amount: str, description: str = None):
         attendee = self._find_attendee(nickname.title())
         amount = self._get_amount(amount)
         logger.info(
             "Adding expense",
-            extra={'attendee': attendee, 'amount': amount, 'description': description}
+            extra={'attendee': attendee, 'amount': amount, 'description': description, 'event': self.event}
         )
         attendee.add_credit(amount, self.EXPENSE, description=description)
         self.event.hidden_host.add_debit(amount, self.EXPENSE, description=description)
+        self.refresh_social_fees()
 
     def add_payment(self, nickname: str, amount: str, to_nickname: str = None):
         payment_to_found = to_nickname is None
@@ -218,7 +269,7 @@ class AccountabilityService:
         amount = self._get_amount(amount)
         logger.info(
             "Adding payment",
-            extra={'from': attendee, 'to': to_attendee, 'amount': amount}
+            extra={'from': attendee, 'to': to_attendee, 'amount': amount, 'event': self.event}
         )
         attendee.add_credit(amount, self.REFOUND)
         hidden_host.add_debit(amount, self.EXPENSE)

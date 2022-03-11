@@ -50,7 +50,7 @@ class User(BaseModel):
         return User.select() \
             .join(Attendance) \
             .join(Event) \
-            .where(Attendance.is_host & (Event.datetime > datetime.datetime.now()) & ~User.hidden)\
+            .where(Attendance.is_host & (Event.datetime >= datetime.datetime.now()) & ~User.hidden)\
             .order_by(User.last_name.desc())
 
     @classmethod
@@ -127,12 +127,15 @@ class Event(BaseModel):
         return attendee
 
     def add_host(self, host):
+        """
+        Make a user that already attend the event, event host
+        """
         if host.hidden:
             return
 
         if not self.is_attendee(host):
             # Add new host if not attendee already
-            Attendance.create(event_id=self.id, attendee=host, is_host=True)
+            return Attendance.create(event_id=self.id, attendee=host, is_host=True)
         else:
             # Update attendee to host if already exists
             Attendance.update(is_host=True)\
@@ -156,7 +159,7 @@ class Event(BaseModel):
 
     def add_attendee(self, attendee: User):
         if not self.is_attendee(attendee):
-            Attendance.create(event_id=self.id, attendee=attendee, is_host=False)
+            return Attendance.create(event_id=self.id, attendee=attendee, is_host=False)
 
     def remove_attendee(self, attendee: User):
         if attendee.hidden:
@@ -259,7 +262,7 @@ class Attendance(BaseModel):
 
 
 class Transaction(BaseModel):
-    attendance = ForeignKeyField(Attendance, related_name='transactions')
+    attendance = ForeignKeyField(Attendance, related_name='transactions', on_delete='cascade')
     account = ForeignKeyField(Account, related_name='transactions')
     description = CharField(default='')
     debit = DecimalField(default=0)
@@ -321,7 +324,7 @@ class EventFinancialStatus:
         msg += f'\nCada peñero tiene que pagar `{self.effective_cost_per_capita}`\n'
 
         for attendance in effective_attendees:
-            balance = round(float(attendance.balance + self.effective_cost_per_capita), 2)
+            balance = round(attendance.balance, 2)
             if not balance:
                 msg += f'\* {attendance.attendee} 👍\n'
             elif balance > 0:
