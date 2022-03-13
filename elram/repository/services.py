@@ -136,7 +136,8 @@ class EventService:
             }
         )
         hidden_host = User.get_hidden_host()
-        event.add_attendee(hidden_host)
+        hidden_host_attendee = event.add_attendee(hidden_host)
+        accountability_service.create_social_fee_transaction(hidden_host_attendee)
         return event
 
     def create_first_event(self):
@@ -157,7 +158,8 @@ class EventService:
             }
         )
         hidden_host = User.get_hidden_host()
-        event.add_attendee(hidden_host)
+        hidden_host_attendee = event.add_attendee(hidden_host)
+        accountability_service.create_social_fee_transaction(hidden_host_attendee)
         return event
 
     def create_future_events(self):
@@ -176,7 +178,7 @@ class EventService:
 class AccountabilityService:
     event: Event = attr.ib()
     _EXPENSE = None
-    _REFOUND = None
+    _REFUND = None
     _CONTRIBUTION = None
     _SOCIAL_FEE = None
 
@@ -187,10 +189,10 @@ class AccountabilityService:
         return self._EXPENSE
 
     @property
-    def REFOUND(self):
-        if self._REFOUND is None:
-            self._REFOUND = Account.get(name='Refunds')
-        return self._REFOUND
+    def REFUND(self):
+        if self._REFUND is None:
+            self._REFUND = Account.get(name='Refunds')
+        return self._REFUND
 
     @property
     def CONTRIBUTION(self):
@@ -201,7 +203,7 @@ class AccountabilityService:
     @property
     def SOCIAL_FEE(self):
         if self._SOCIAL_FEE is None:
-            self._SOCIAL_FEE = Account.get(name='Social Fee')
+            self._SOCIAL_FEE = Account.get(name='Social Fees')
         return self._SOCIAL_FEE
 
     @staticmethod
@@ -231,7 +233,13 @@ class AccountabilityService:
         )
 
     def refresh_social_fees(self):
-        financial_status = EventFinancialStatus(event=self.event, cost_account=self.EXPENSE)
+        financial_status = EventFinancialStatus(
+            event=self.event,
+            cost_account=self.EXPENSE,
+            refund_account=self.REFUND,
+            social_fee_account=self.SOCIAL_FEE,
+            contribution_account=self.CONTRIBUTION,
+        )
         cost = financial_status.cost_per_capita
         contribution = financial_status.per_capita_contribution
         logger.info(
@@ -245,6 +253,13 @@ class AccountabilityService:
             Transaction.update(debit=financial_status.per_capita_contribution) \
                 .where((Transaction.attendance == attendee) & (Transaction.account == self.CONTRIBUTION))\
                 .execute()
+        hidden_host = self.event.hidden_host
+        Transaction.update(credit=financial_status.total_cost) \
+            .where((Transaction.attendance == hidden_host) & (Transaction.account == self.SOCIAL_FEE)) \
+            .execute()
+        Transaction.update(credit=financial_status.total_contribution) \
+            .where((Transaction.attendance == hidden_host) & (Transaction.account == self.CONTRIBUTION)) \
+            .execute()
 
     def add_expense(self, nickname: str, amount: str, description: str = None):
         attendee = self._find_attendee(nickname.title())
@@ -271,11 +286,11 @@ class AccountabilityService:
             "Adding payment",
             extra={'from': attendee, 'to': to_attendee, 'amount': amount, 'event': self.event}
         )
-        attendee.add_credit(amount, self.REFOUND)
-        hidden_host.add_debit(amount, self.EXPENSE)
+        attendee.add_credit(amount, self.REFUND)
+        hidden_host.add_debit(amount, self.REFUND)
         if not payment_to_found:
-            to_attendee.add_debit(amount, self.REFOUND)
-            hidden_host.add_cebit(amount, self.EXPENSE)
+            to_attendee.add_debit(amount, self.REFUND)
+            hidden_host.add_credit(amount, self.REFUND)
 
     def add_refound(self, nickname: str, amount: str):
         attendee = self._find_attendee(nickname.title())
@@ -284,5 +299,5 @@ class AccountabilityService:
             "Adding refound",
             extra={'attendee': attendee, 'amount': amount,}
         )
-        attendee.add_debit(amount, self.REFOUND)
-        self.event.hidden_host.add_credit(amount, self.REFOUND)
+        attendee.add_debit(amount, self.REFUND)
+        self.event.hidden_host.add_credit(amount, self.REFUND)
