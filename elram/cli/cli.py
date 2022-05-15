@@ -3,7 +3,7 @@ import click
 from elram.config import load_config
 from elram.logger import setup_logger
 import logging
-from .commands import run_bot, init, create_next_events
+from .commands import run_bot, bootstrap, create_next_events
 from elram.repository.commands import init_db
 
 CONFIG = load_config()
@@ -19,5 +19,5 @@ def main():
 
 
 main.add_command(run_bot)
-main.add_command(init)
+main.add_command(bootstrap)
 main.add_command(create_next_events)

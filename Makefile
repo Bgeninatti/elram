@@ -9,6 +9,9 @@ help:
 	@echo "check-style       -- Check code-style"
 	@echo "build             -- Rebuild the docker container"
 
+bootstrap:
+	$(COMPOSE) run --rm elram elram bootstrap
+
 run:
 	$(COMPOSE) run --rm elram elram run-bot
 
@@ -30,4 +33,4 @@ build:
 stop:
 	$(COMPOSE) down --remove-orphans
 
-.PHONY: help run shell test check-imports check-style build stop
+.PHONY: help bootstrap run shell test check-imports check-style build stop

@@ -21,7 +21,7 @@ def run_bot(bot_token):
 
 @click.command()
 @click.argument('data_file', type=Path, default=CONFIG['INITIAL_USERS_FILE'])
-def init(data_file):
+def bootstrap(data_file):
     service = EventService()
     populate_db(data_file)
     service.create_first_event()

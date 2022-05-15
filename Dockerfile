@@ -10,6 +10,4 @@ RUN apt-get install -y python3-dev libpq-dev
 
 COPY . .
 RUN pip install --upgrade pip
-RUN pip install -r requirements.txt
 RUN python setup.py install
-RUN elram init
