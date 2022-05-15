@@ -173,6 +173,26 @@ class EventService:
                 continue
             self.create_event(host, offset=offset)
 
+    def display_event(self, event):
+        financial_status = EventFinancialStatus(
+            event=event,
+            cost_account=Account.get(name='Expenses'),
+            refund_account=Account.get(name='Refunds'),
+            social_fee_account=Account.get(name='Social Fees'),
+            contribution_account=Account.get(name='Contributions'),
+        )
+        msg = (
+            f'*Peña \#{event.code} \- {event.datetime_display}*\n'
+            f'La organiza {event.host}\n'
+        )
+        msg += event.display_attendees()
+        msg += '\n'
+        if financial_status.total_cost > 0:
+            msg += financial_status.display()
+            msg += '\n'
+        return msg
+
+
 
 @attr.s
 class AccountabilityService:

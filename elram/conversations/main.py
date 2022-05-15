@@ -21,7 +21,7 @@ class MainConversation:
     LOGIN, LISTENING = range(2)
 
     def _set_main_event(self, event: Event, chat: Chat, context: CallbackContext):
-        event_message = chat.send_message(text=str(event), parse_mode='MarkdownV2')
+        event_message = chat.send_message(text=self._event_service.display_event(event), parse_mode='MarkdownV2')
         context.user_data['event'] = event
         context.user_data['emsg'] = event_message
         self._refresh_services(event)
@@ -30,10 +30,9 @@ class MainConversation:
         self._attendance_service = AttendanceService(event)
         self._accountability_service = AccountabilityService(event)
 
-    @staticmethod
-    def _refresh_main_event(context: CallbackContext):
+    def _refresh_main_event(self, context: CallbackContext):
         event = context.user_data['event'].refresh()
-        new_msg_text = str(event)
+        new_msg_text = self._event_service.display_event(event)
         if new_msg_text != context.user_data['emsg'].text:
             context.user_data['emsg'].edit_text(new_msg_text, parse_mode='MarkdownV2')
 

@@ -175,23 +175,7 @@ class Event(BaseModel):
         return f'Hasta ahora van:\n{attendees_names}\n'
 
     def __str__(self):
-        financial_status = EventFinancialStatus(
-            event=self,
-            cost_account=Account.get(name='Expenses'),
-            refund_account=Account.get(name='Refunds'),
-            social_fee_account=Account.get(name='Social Fees'),
-            contribution_account=Account.get(name='Contributions'),
-        )
-        msg = (
-            f'*Peña \#{self.code} \- {self.datetime_display}*\n'
-            f'La organiza {self.host}\n'
-        )
-        msg += self.display_attendees()
-        msg += '\n'
-        if financial_status.total_cost > 0:
-            msg += financial_status.display()
-            msg += '\n'
-        return msg
+        return f'<Event #{self.code}>'
 
 
 class Account(BaseModel):
@@ -365,4 +349,4 @@ class EventFinancialStatus:
         return msg
 
     def __str__(self):
-        return f'<EventFinancialStatus #{self.event}>'
+        return f'<EventFinancialStatus #{self.event.code}>'
