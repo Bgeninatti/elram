@@ -24,5 +24,9 @@ setuptools.setup(
     ],
     install_requires=requirements,
     python_requires=">=3.9",
-    scripts=["bin/elram"],
+    entry_points={
+        'console_scripts': [
+            'elram=elram.cli:main',
+        ],
+    },
 )
