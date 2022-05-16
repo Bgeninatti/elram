@@ -20,10 +20,11 @@ def run_bot(bot_token):
 
 
 @click.command()
-@click.argument('data_file', type=Path, default=CONFIG['INITIAL_USERS_FILE'])
-def bootstrap(data_file):
+@click.argument('bootstrap_file_url', default=CONFIG['BOOTSTRAP_FILE_URL'])
+def bootstrap(bootstrap_file_url):
     service = EventService()
-    populate_db(data_file)
+    bootstrap_data = service.get_bootstrap_data(bootstrap_file_url)
+    populate_db(bootstrap_data)
     service.create_first_event()
     service.create_future_events()
 

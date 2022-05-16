@@ -30,7 +30,7 @@ def load_config():
             "host": params.hostname,
             "port": params.port,
         },
-        "INITIAL_USERS_FILE": clean_setting("INITIAL_USERS_FILE"),
+        "BOOTSTRAP_FILE_URL": clean_setting("BOOTSTRAP_FILE_URL"),
         "FIRST_EVENT_CODE": int(clean_setting("FIRST_EVENT_CODE")),
         "FIRST_EVENT_HOST_NICKNAME": clean_setting("FIRST_EVENT_HOST_NICKNAME"),
         "HIDDEN_USER_NICKNAME": clean_setting("HIDDEN_USER_NICKNAME"),

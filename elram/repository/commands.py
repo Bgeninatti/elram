@@ -1,4 +1,3 @@
-import json
 import logging
 
 from elram.config import load_config
@@ -8,14 +7,11 @@ CONFIG = load_config()
 logger = logging.getLogger('main')
 
 
-def populate_db(data_file):
+def populate_db(data):
     models_mapping = {
         'users': User,
         'accounts': Account,
     }
-
-    with open(data_file) as f:
-        data = json.load(f)
 
     for model_key, model_data in data.items():
         model_class = models_mapping.get(model_key)

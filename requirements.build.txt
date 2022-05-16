@@ -3,3 +3,4 @@ peewee==3.14.9
 python-telegram-bot==13.11
 psycopg2
 attrs
+requests

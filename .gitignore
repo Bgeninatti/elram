@@ -135,4 +135,4 @@ dmypy.json
 settings.env
 
 # Initial data
-initial_data.json
+bootstrap_data.json

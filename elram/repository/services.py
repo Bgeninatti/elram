@@ -4,6 +4,7 @@ from decimal import Decimal, InvalidOperation
 from typing import Optional
 
 import attr
+import requests as requests
 from peewee import DoesNotExist
 
 from elram.repository.models import Event, User, AttendeeNotFound, Account, EventFinancialStatus, Transaction, \
@@ -95,6 +96,11 @@ class AttendanceService:
 @attr.s
 class EventService:
     users_service = attr.ib(factory=lambda: UsersService())
+
+    def get_bootstrap_data(self, url):
+        response = requests.get(url)
+        response.raise_for_status()
+        return response.json()
 
     def get_active_event(self):
         return Event.select()\
